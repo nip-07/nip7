@@ -1,6 +1,6 @@
 <p align="center">
   <strong>nip07</strong><br>
-  <em>One script tag. Paste a key. Sign events.</em>
+  <em>One script tag. Paste a key or use an extension. Sign events.</em>
 </p>
 
 <p align="center">
@@ -12,19 +12,26 @@
 
 ---
 
-**nip07** is a minimal [NIP-07](https://github.com/nostr-protocol/nips/blob/master/07.md) `window.nostr` provider for the browser. It gives any Nostr web app the ability to sign events using a hex private key — no extensions, no build tools, no frameworks.
+**nip07** is a minimal [NIP-07](https://github.com/nostr-protocol/nips/blob/master/07.md) `window.nostr` provider for the browser. It gives any Nostr web app the ability to sign events — either by pasting a hex private key or by using an existing browser extension.
 
-Paste your 64-character hex key and it auto-accepts instantly.
+No build tools. No frameworks. One script tag.
 
 ## Quick Start
-
-Add one line to any HTML page:
 
 ```html
 <script src="https://unpkg.com/nip07"></script>
 ```
 
-That's it. A login button appears in the corner. Paste your key and every Nostr app on the page just works.
+A login button appears in the corner. You get two ways to authenticate:
+
+1. **Browser extension** — if a NIP-07 extension is detected, a "Use Browser Extension" button appears at the top of the modal. Click it to delegate all signing to the extension.
+2. **Hex private key** — paste a 64-character hex key and it auto-accepts instantly.
+
+Click the button again when logged in to log out.
+
+## Live Demo
+
+Try it at [nip-07.github.io/nip7](https://nip-07.github.io/nip7/)
 
 ## What You Get
 
@@ -39,17 +46,20 @@ await window.nostr.nip04.decrypt(pubkey, text) // NIP-04 decrypted DM
 
 ## How It Works
 
-1. The script sets `window.nostr` **synchronously** on load — before your app's scripts run
-2. A small floating button appears (bottom-right, Shadow DOM isolated)
-3. When an app calls any `window.nostr` method, the login modal opens automatically if needed
-4. Paste a 64-char hex key — it **auto-accepts on paste** (no button click required)
-5. Key is derived, events are signed, and the calling promise resolves
+1. The script saves any existing `window.nostr` (from a browser extension) before overwriting
+2. Sets its own `window.nostr` **synchronously** on load — before your app's scripts run
+3. A small floating button appears (bottom-right, Shadow DOM isolated)
+4. When an app calls any `window.nostr` method, the login modal opens automatically if needed
+5. If an extension is detected, the modal offers it as a one-click option
+6. If a hex key is pasted, signing happens locally using Schnorr/BIP-340
+7. Click the button again to log out (clears key from memory)
 
 Under the hood:
 - **Signing** — Schnorr/BIP-340 over secp256k1 per [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md)
 - **Encryption** — ECDH shared secret + AES-256-CBC via Web Crypto API per [NIP-04](https://github.com/nostr-protocol/nips/blob/master/04.md)
 - **Hashing** — SHA-256 via the browser's native `crypto.subtle`
 - **UI isolation** — closed Shadow DOM, zero CSS leakage in or out
+- **Extension support** — detects and proxies to existing NIP-07 extensions
 
 ## ES Module
 
@@ -87,11 +97,11 @@ init("abc123...");
 
 ## Events
 
-The script dispatches an `nlAuth` event on `document` after successful login:
+The script dispatches `nlAuth` events on `document` for login and logout:
 
 ```js
 document.addEventListener("nlAuth", (e) => {
-  console.log(e.detail.type); // "login"
+  console.log(e.detail.type); // "login" or "logout"
 });
 ```
 
@@ -102,6 +112,7 @@ document.addEventListener("nlAuth", (e) => {
 | Key storage | **Memory only** — never touches `localStorage`, `sessionStorage`, or disk |
 | Page refresh | Clears the key — re-entry required |
 | Input masking | Password field — key is never visible on screen |
+| Extension mode | Private key never leaves the extension — nip07 proxies calls through |
 | CSS isolation | Closed Shadow DOM — host page cannot read or style the widget |
 | Dependencies | Single dep: [`@noble/secp256k1`](https://github.com/paulmillr/noble-secp256k1) (audited, pure JS, zero transitive deps) |
 
