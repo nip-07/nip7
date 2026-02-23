@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nostr Login Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; background: #111; color: #eee; }
+    h1 { font-size: 22px; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0; }
+    button { padding: 8px 16px; border-radius: 8px; border: none; background: #333; color: #eee; cursor: pointer; font-size: 14px; }
+    button:hover { background: #444; }
+    pre { background: #1a1a2e; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; white-space: pre-wrap; word-break: break-all; min-height: 80px; }
+  </style>
+</head>
+<body>
+  <h1>NIP-07 Test Harness</h1>
+  <p>Click a button to test <code>window.nostr</code> methods. If you haven't logged in yet, the modal will open automatically.</p>
+
+  <div class="actions">
+    <button id="getPub">getPublicKey()</button>
+    <button id="sign">signEvent()</button>
+    <button id="enc">nip04.encrypt()</button>
+    <button id="dec">nip04.decrypt()</button>
+    <button id="clear">Clear</button>
+  </div>
+
+  <pre id="output"></pre>
+
+  <script src="nip7.js"></script>
+  <script>
+    var output = document.getElementById("output");
+    function log(msg) { output.textContent += msg + "\n"; }
+
+    document.addEventListener("nlAuth", function (e) {
+      log("[event] nlAuth: " + e.detail.type);
+    });
+
+    document.getElementById("getPub").onclick = async function () {
+      try {
+        var pk = await window.nostr.getPublicKey();
+        log("pubkey: " + pk);
+      } catch (e) { log("error: " + e.message); }
+    };
+
+    document.getElementById("sign").onclick = async function () {
+      try {
+        var ev = await window.nostr.signEvent({
+          created_at: Math.floor(Date.now() / 1000),
+          kind: 1,
+          tags: [],
+          content: "Hello Nostr!",
+        });
+        log("signed event:\n" + JSON.stringify(ev, null, 2));
+      } catch (e) { log("error: " + e.message); }
+    };
+
+    var lastCipher = "";
+    document.getElementById("enc").onclick = async function () {
+      try {
+        var pk = await window.nostr.getPublicKey();
+        lastCipher = await window.nostr.nip04.encrypt(pk, "secret message");
+        log("encrypted: " + lastCipher);
+      } catch (e) { log("error: " + e.message); }
+    };
+
+    document.getElementById("dec").onclick = async function () {
+      try {
+        if (!lastCipher) { log("encrypt something first"); return; }
+        var pk = await window.nostr.getPublicKey();
+        var plain = await window.nostr.nip04.decrypt(pk, lastCipher);
+        log("decrypted: " + plain);
+      } catch (e) { log("error: " + e.message); }
+    };
+
+    document.getElementById("clear").onclick = function () {
+      output.textContent = "";
+    };
+  </script>
+</body>
+</html>
