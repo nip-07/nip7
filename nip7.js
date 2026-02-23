@@ -107,7 +107,17 @@
     var btn = document.createElement("button");
     btn.className = "nl-btn";
     btn.textContent = "Login";
-    btn.onclick = function () { showModal(); };
+    btn.onclick = function () {
+      if (_privKey) {
+        _privKey = null;
+        _pubKey = null;
+        btn.textContent = "Login";
+        btn.title = "";
+        document.dispatchEvent(new CustomEvent("nlAuth", { detail: { type: "logout" } }));
+      } else {
+        showModal();
+      }
+    };
     shadow.appendChild(btn);
 
     var overlay = document.createElement("div");
