@@ -3,7 +3,11 @@
   if (window.__nostrLoginLoaded) return;
   window.__nostrLoginLoaded = true;
 
+  // --- Capture any existing extension before we overwrite ---
+  var _ext = window.nostr || null;
+
   // --- State (memory-only, never persisted) ---
+  var _provider = null; // "key" or "extension"
   let _privKey = null;
   let _pubKey = null;
   let _secp = null;
@@ -76,6 +80,31 @@
     return new TextDecoder().decode(plain);
   }
 
+  // --- Logout: clear state ---
+  function logout(btn) {
+    _provider = null;
+    _privKey = null;
+    _pubKey = null;
+    if (btn) {
+      btn.textContent = "Login";
+      btn.title = "";
+    }
+    document.dispatchEvent(new CustomEvent("nlAuth", { detail: { type: "logout" } }));
+  }
+
+  // --- Login success: update UI ---
+  function loginSuccess(btn, pubkey, method) {
+    _pubKey = pubkey;
+    _provider = method;
+    if (btn) {
+      btn.textContent = pubkey.slice(0, 8) + "\u2026" + pubkey.slice(-4);
+      btn.title = pubkey;
+    }
+    _keyResolvers.forEach(function (r) { r.resolve(); });
+    _keyResolvers = [];
+    document.dispatchEvent(new CustomEvent("nlAuth", { detail: { type: "login" } }));
+  }
+
   // --- UI: Shadow DOM widget ---
   var _ui = null;
 
@@ -93,6 +122,9 @@
       ".nl-overlay.active{display:flex}",
       ".nl-modal{background:#1a1a2e;color:#e0e0e0;border-radius:12px;padding:24px;width:360px;max-width:90vw;font:14px/1.4 system-ui,sans-serif;box-shadow:0 8px 32px rgba(0,0,0,.4)}",
       ".nl-modal h2{margin:0 0 16px;font-size:18px;color:#fff}",
+      ".nl-ext{width:100%;box-sizing:border-box;padding:10px 16px;border:1px solid #8B5CF6;border-radius:8px;background:transparent;color:#8B5CF6;font-size:14px;cursor:pointer;margin-bottom:12px;transition:background .2s}",
+      ".nl-ext:hover{background:#8B5CF620}",
+      ".nl-sep{text-align:center;color:#666;font-size:12px;margin-bottom:12px}",
       ".nl-modal input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #333;border-radius:8px;background:#0d0d1a;color:#e0e0e0;font:13px monospace;margin-bottom:8px}",
       ".nl-modal input:focus{outline:none;border-color:#8B5CF6}",
       ".nl-error{color:#ef4444;font-size:12px;margin-bottom:8px;min-height:16px}",
@@ -108,12 +140,8 @@
     btn.className = "nl-btn";
     btn.textContent = "Login";
     btn.onclick = function () {
-      if (_privKey) {
-        _privKey = null;
-        _pubKey = null;
-        btn.textContent = "Login";
-        btn.title = "";
-        document.dispatchEvent(new CustomEvent("nlAuth", { detail: { type: "logout" } }));
+      if (_provider) {
+        logout(btn);
       } else {
         showModal();
       }
@@ -122,9 +150,19 @@
 
     var overlay = document.createElement("div");
     overlay.className = "nl-overlay";
-    overlay.innerHTML =
+
+    var modalHTML =
       '<div class="nl-modal">' +
-        '<h2>Nostr Login</h2>' +
+        '<h2>Nostr Login</h2>';
+
+    // Extension button (conditionally included)
+    if (_ext) {
+      modalHTML +=
+        '<button class="nl-ext">Use Browser Extension</button>' +
+        '<div class="nl-sep">or paste a private key</div>';
+    }
+
+    modalHTML +=
         '<input type="password" placeholder="64-char hex private key" maxlength="64" spellcheck="false" autocomplete="off">' +
         '<div class="nl-error"></div>' +
         '<div class="nl-actions">' +
@@ -132,12 +170,16 @@
           '<button class="nl-submit">Login</button>' +
         '</div>' +
       '</div>';
+
+    overlay.innerHTML = modalHTML;
+    overlay.className = "nl-overlay";
     shadow.appendChild(overlay);
 
     var input = overlay.querySelector("input");
     var error = overlay.querySelector(".nl-error");
     var cancelBtn = overlay.querySelector(".nl-cancel");
     var submitBtn = overlay.querySelector(".nl-submit");
+    var extBtn = overlay.querySelector(".nl-ext");
 
     function cancel() {
       hideModal();
@@ -150,6 +192,20 @@
     cancelBtn.onclick = cancel;
     overlay.onclick = function (e) { if (e.target === overlay) cancel(); };
 
+    // Extension login
+    if (extBtn) {
+      extBtn.onclick = async function () {
+        try {
+          var pubkey = await _ext.getPublicKey();
+          hideModal();
+          loginSuccess(btn, pubkey, "extension");
+        } catch (e) {
+          error.textContent = "Extension error: " + e.message;
+        }
+      };
+    }
+
+    // Key login
     submitBtn.onclick = async function () {
       var val = input.value.trim().toLowerCase();
       if (!/^[0-9a-f]{64}$/.test(val)) {
@@ -158,15 +214,11 @@
       }
       await _secpReady;
       _privKey = val;
-      _pubKey = bytesToHex(_secp.schnorr.getPublicKey(val));
+      var pubkey = bytesToHex(_secp.schnorr.getPublicKey(val));
       hideModal();
       input.value = "";
       error.textContent = "";
-      btn.textContent = _pubKey.slice(0, 8) + "\u2026" + _pubKey.slice(-4);
-      btn.title = _pubKey;
-      _keyResolvers.forEach(function (r) { r.resolve(); });
-      _keyResolvers = [];
-      document.dispatchEvent(new CustomEvent("nlAuth", { detail: { type: "login" } }));
+      loginSuccess(btn, pubkey, "key");
     };
 
     input.addEventListener("keydown", function (e) {
@@ -199,9 +251,9 @@
     if (ui) ui.overlay.classList.remove("active");
   }
 
-  // --- Key gating: opens modal if no key yet ---
-  function ensureKey() {
-    if (_privKey) return Promise.resolve();
+  // --- Provider gating: opens modal if no provider yet ---
+  function ensureProvider() {
+    if (_provider) return Promise.resolve();
     return new Promise(function (resolve, reject) {
       _keyResolvers.push({ resolve: resolve, reject: reject });
       showModal();
@@ -211,20 +263,24 @@
   // --- NIP-07: window.nostr (assigned synchronously) ---
   window.nostr = {
     getPublicKey: async function () {
-      await ensureKey();
+      await ensureProvider();
+      if (_provider === "extension") return _ext.getPublicKey();
       return _pubKey;
     },
     signEvent: async function (event) {
-      await ensureKey();
+      await ensureProvider();
+      if (_provider === "extension") return _ext.signEvent(event);
       return _signEvent(event);
     },
     nip04: {
       encrypt: async function (pubkey, plaintext) {
-        await ensureKey();
+        await ensureProvider();
+        if (_provider === "extension" && _ext.nip04) return _ext.nip04.encrypt(pubkey, plaintext);
         return _nip04Encrypt(pubkey, plaintext);
       },
       decrypt: async function (pubkey, ciphertext) {
-        await ensureKey();
+        await ensureProvider();
+        if (_provider === "extension" && _ext.nip04) return _ext.nip04.decrypt(pubkey, ciphertext);
         return _nip04Decrypt(pubkey, ciphertext);
       },
     },
