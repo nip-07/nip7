@@ -1,0 +1,36 @@
+{
+  "name": "nip7",
+  "version": "0.1.0",
+  "description": "Minimal NIP-07 window.nostr provider. Paste a hex private key, get signing.",
+  "main": "index.js",
+  "type": "module",
+  "unpkg": "nip7.js",
+  "jsdelivr": "nip7.js",
+  "exports": {
+    ".": "./index.js",
+    "./widget": "./nip7.js"
+  },
+  "files": [
+    "index.js",
+    "nip7.js"
+  ],
+  "scripts": {
+    "test": "echo \"open index.html in a browser\""
+  },
+  "keywords": [
+    "nostr",
+    "nip-07",
+    "nip07",
+    "login",
+    "signing",
+    "window.nostr"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nip-07/nip7.git"
+  },
+  "dependencies": {
+    "@noble/secp256k1": "^1.7.1"
+  }
+}
