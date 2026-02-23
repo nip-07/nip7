@@ -1,6 +1,6 @@
 {
   "name": "nip07",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Minimal NIP-07 window.nostr provider. Paste a hex private key, get signing.",
   "main": "index.js",
   "type": "module",

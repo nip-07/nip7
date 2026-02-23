@@ -163,6 +163,11 @@
       if (e.key === "Enter") submitBtn.onclick();
     });
 
+    input.addEventListener("input", function () {
+      var val = input.value.trim();
+      if (/^[0-9a-fA-F]{64}$/.test(val)) submitBtn.onclick();
+    });
+
     return { btn: btn, overlay: overlay, input: input };
   }
 
