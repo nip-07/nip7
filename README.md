@@ -29,6 +29,14 @@ A login button appears in the corner. You get two ways to authenticate:
 
 Click the button again when logged in to log out.
 
+> **Tip:** If you're using nip07 alongside other client-side rendering libraries (e.g. solid-shim/mashlib), add the `defer` attribute to avoid the page flashing white:
+>
+> ```html
+> <script src="https://unpkg.com/nip07" defer></script>
+> ```
+>
+> This ensures nip07 loads after the DOM is parsed, preventing conflicts with libraries that render on load.
+
 ## Live Demo
 
 Try it at [nip-07.github.io/nip7](https://nip-07.github.io/nip7/)
