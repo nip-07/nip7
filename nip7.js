@@ -6,12 +6,27 @@
   // --- Capture any existing extension before we overwrite ---
   var _ext = window.nostr || null;
 
-  // --- State (memory-only, never persisted) ---
+  // --- State ---
   var _provider = null; // "key" or "extension"
   let _privKey = null;
   let _pubKey = null;
   let _secp = null;
   let _keyResolvers = [];
+
+  // --- localStorage persistence (Jumble-compatible) ---
+  function loadAccounts() {
+    try { return JSON.parse(localStorage.getItem("accounts")) || []; } catch (e) { return []; }
+  }
+  function saveAccounts(accounts) {
+    localStorage.setItem("accounts", JSON.stringify(accounts));
+  }
+  function loadCurrentAccount() {
+    try { return JSON.parse(localStorage.getItem("currentAccount")); } catch (e) { return null; }
+  }
+  function saveCurrentAccount(account) {
+    if (account) localStorage.setItem("currentAccount", JSON.stringify(account));
+    else localStorage.removeItem("currentAccount");
+  }
 
   // --- Dynamic import of secp256k1 (kicks off immediately) ---
   const _secpReady = import("https://esm.sh/@noble/secp256k1@1.7.1").then(
@@ -85,6 +100,7 @@
     _provider = null;
     _privKey = null;
     _pubKey = null;
+    saveCurrentAccount(null);
     if (btn) {
       btn.textContent = "Login";
       btn.title = "";
@@ -92,7 +108,7 @@
     document.dispatchEvent(new CustomEvent("nlAuth", { detail: { type: "logout" } }));
   }
 
-  // --- Login success: update UI ---
+  // --- Login success: update UI + persist ---
   function loginSuccess(btn, pubkey, method) {
     _pubKey = pubkey;
     _provider = method;
@@ -100,6 +116,20 @@
       btn.textContent = pubkey.slice(0, 8) + "\u2026" + pubkey.slice(-4);
       btn.title = pubkey;
     }
+
+    // Persist to localStorage
+    var account = {
+      "@id": "did:nostr:" + pubkey,
+      pubkey: pubkey,
+      signerType: method === "extension" ? "nip-07" : "key"
+    };
+    if (method === "key" && _privKey) account.privkey = _privKey;
+    var accounts = loadAccounts();
+    var idx = accounts.findIndex(function (a) { return a.pubkey === pubkey; });
+    if (idx >= 0) accounts[idx] = account; else accounts.push(account);
+    saveAccounts(accounts);
+    saveCurrentAccount(account);
+
     _keyResolvers.forEach(function (r) { r.resolve(); });
     _keyResolvers = [];
     document.dispatchEvent(new CustomEvent("nlAuth", { detail: { type: "login" } }));
@@ -138,7 +168,8 @@
 
     var btn = document.createElement("button");
     btn.className = "nl-btn";
-    btn.textContent = "Login";
+    btn.textContent = (_provider && _pubKey) ? _pubKey.slice(0, 8) + "\u2026" + _pubKey.slice(-4) : "Login";
+    if (_provider && _pubKey) btn.title = _pubKey;
     btn.onclick = function () {
       if (_provider) {
         logout(btn);
@@ -285,6 +316,37 @@
       },
     },
   };
+
+  // --- Auto-restore from localStorage ---
+  var _restored = loadCurrentAccount();
+  if (_restored) {
+    if (_restored.signerType === "key" && _restored.privkey) {
+      _privKey = _restored.privkey;
+      _pubKey = _restored.pubkey;
+      _provider = "key";
+    } else if (_restored.signerType === "nip-07") {
+      // Poll for extension (like Jumble: up to 50x100ms = 5s)
+      _pubKey = _restored.pubkey;
+      (async function () {
+        for (var i = 0; i < 50; i++) {
+          if (_ext) {
+            _provider = "extension";
+            var ui = getUI();
+            if (ui && ui.btn) {
+              ui.btn.textContent = _pubKey.slice(0, 8) + "\u2026" + _pubKey.slice(-4);
+              ui.btn.title = _pubKey;
+            }
+            document.dispatchEvent(new CustomEvent("nlAuth", { detail: { type: "login" } }));
+            return;
+          }
+          await new Promise(function (r) { setTimeout(r, 100); });
+        }
+        // Extension not found — clear stale session
+        _pubKey = null;
+        saveCurrentAccount(null);
+      })();
+    }
+  }
 
   // --- Init UI when DOM is ready ---
   if (document.readyState === "loading") {
