@@ -6,6 +6,11 @@
   // --- Capture any existing extension before we overwrite ---
   var _ext = window.nostr || null;
 
+  // --- Optional guest key from data attribute ---
+  var _script = document.currentScript;
+  var _guestKey = _script && _script.dataset.guest;
+  if (_guestKey && !/^[0-9a-f]{64}$/.test(_guestKey)) _guestKey = null;
+
   // --- State ---
   var _provider = null; // "key" or "extension"
   let _privKey = null;
@@ -118,12 +123,13 @@
     }
 
     // Persist to localStorage
+    var signerType = method === "extension" ? "nip-07" : method;
     var account = {
       "@id": "did:nostr:" + pubkey,
       pubkey: pubkey,
-      signerType: method === "extension" ? "nip-07" : "key"
+      signerType: signerType
     };
-    if (method === "key" && _privKey) account.privkey = _privKey;
+    if ((method === "key" || method === "guest") && _privKey) account.privkey = _privKey;
     var accounts = loadAccounts();
     var idx = accounts.findIndex(function (a) { return a.pubkey === pubkey; });
     if (idx >= 0) accounts[idx] = account; else accounts.push(account);
@@ -154,6 +160,8 @@
       ".nl-modal h2{margin:0 0 16px;font-size:18px;color:#fff}",
       ".nl-ext{width:100%;box-sizing:border-box;padding:10px 16px;border:1px solid #8B5CF6;border-radius:8px;background:transparent;color:#8B5CF6;font-size:14px;cursor:pointer;margin-bottom:12px;transition:background .2s}",
       ".nl-ext:hover{background:#8B5CF620}",
+      ".nl-guest{width:100%;box-sizing:border-box;padding:10px 16px;border:1px solid #666;border-radius:8px;background:transparent;color:#aaa;font-size:14px;cursor:pointer;margin-bottom:12px;transition:background .2s}",
+      ".nl-guest:hover{background:#66666620}",
       ".nl-sep{text-align:center;color:#666;font-size:12px;margin-bottom:12px}",
       ".nl-modal input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #333;border-radius:8px;background:#0d0d1a;color:#e0e0e0;font:13px monospace;margin-bottom:8px}",
       ".nl-modal input:focus{outline:none;border-color:#8B5CF6}",
@@ -189,8 +197,17 @@
     // Extension button (conditionally included)
     if (_ext) {
       modalHTML +=
-        '<button class="nl-ext">Use Browser Extension</button>' +
-        '<div class="nl-sep">or paste a private key</div>';
+        '<button class="nl-ext">Use Browser Extension</button>';
+    }
+
+    // Guest button (conditionally included)
+    if (_guestKey) {
+      modalHTML +=
+        '<button class="nl-guest">Continue as Guest</button>';
+    }
+
+    if (_ext || _guestKey) {
+      modalHTML += '<div class="nl-sep">or paste a private key</div>';
     }
 
     modalHTML +=
@@ -211,6 +228,7 @@
     var cancelBtn = overlay.querySelector(".nl-cancel");
     var submitBtn = overlay.querySelector(".nl-submit");
     var extBtn = overlay.querySelector(".nl-ext");
+    var guestBtn = overlay.querySelector(".nl-guest");
 
     function cancel() {
       hideModal();
@@ -233,6 +251,17 @@
         } catch (e) {
           error.textContent = "Extension error: " + e.message;
         }
+      };
+    }
+
+    // Guest login
+    if (guestBtn) {
+      guestBtn.onclick = async function () {
+        await _secpReady;
+        _privKey = _guestKey;
+        var pubkey = bytesToHex(_secp.schnorr.getPublicKey(_guestKey));
+        hideModal();
+        loginSuccess(btn, pubkey, "guest");
       };
     }
 
@@ -320,10 +349,10 @@
   // --- Auto-restore from localStorage ---
   var _restored = loadCurrentAccount();
   if (_restored) {
-    if (_restored.signerType === "key" && _restored.privkey) {
+    if ((_restored.signerType === "key" || _restored.signerType === "guest") && _restored.privkey) {
       _privKey = _restored.privkey;
       _pubKey = _restored.pubkey;
-      _provider = "key";
+      _provider = _restored.signerType;
     } else if (_restored.signerType === "nip-07") {
       // Poll for extension (like Jumble: up to 50x100ms = 5s)
       _pubKey = _restored.pubkey;

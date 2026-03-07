@@ -22,12 +22,23 @@ No build tools. No frameworks. One script tag.
 <script src="https://unpkg.com/nip07"></script>
 ```
 
-A login button appears in the corner. You get two ways to authenticate:
+A login button appears in the corner. You get three ways to authenticate:
 
 1. **Browser extension** — if a NIP-07 extension is detected, a "Use Browser Extension" button appears at the top of the modal. Click it to delegate all signing to the extension.
-2. **Hex private key** — paste a 64-character hex key and it auto-accepts instantly.
+2. **Guest** — if the page enables it, a "Continue as Guest" button logs in with a shared well-known keypair. No setup required.
+3. **Hex private key** — paste a 64-character hex key and it auto-accepts instantly.
 
 Click the button again when logged in to log out.
+
+### Guest Mode
+
+To enable the guest button, add a `data-guest` attribute with a 64-char hex private key:
+
+```html
+<script src="https://unpkg.com/nip07" data-guest="473305b5b39cd679d94bd56f38b939ada5d4827bbf80e7889ad1238e8ebbdd0d"></script>
+```
+
+The key is public by design — all guest users share the same identity. This is useful for letting people try a Nostr app without installing an extension or managing keys. Omit the attribute to disable guest login.
 
 > **Tip:** If you're using nip07 alongside other client-side rendering libraries (e.g. solid-shim/mashlib), add the `defer` attribute to avoid the page flashing white:
 >
@@ -59,8 +70,9 @@ await window.nostr.nip04.decrypt(pubkey, text) // NIP-04 decrypted DM
 3. A small floating button appears (bottom-right, Shadow DOM isolated)
 4. When an app calls any `window.nostr` method, the login modal opens automatically if needed
 5. If an extension is detected, the modal offers it as a one-click option
-6. If a hex key is pasted, signing happens locally using Schnorr/BIP-340
-7. Click the button again to log out (clears key from memory)
+6. If `data-guest` is set, a guest login button appears in the modal
+7. If a hex key is pasted, signing happens locally using Schnorr/BIP-340
+8. Click the button again to log out (clears key from memory)
 
 Under the hood:
 - **Signing** — Schnorr/BIP-340 over secp256k1 per [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md)
